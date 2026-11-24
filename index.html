@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#111317" />
+    <title>Tracepad</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="src/shell/main.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <form id="load-form" class="load" autocomplete="off">
+        <label class="visually-hidden" for="url">YouTube link</label>
+        <input id="url" type="url" inputmode="url" placeholder="Paste a YouTube link" spellcheck="false" />
+        <button type="submit">Load</button>
+      </form>
+      <p id="title" class="title"></p>
+      <div class="seg" role="group" aria-label="Touches go to">
+        <button id="mode-draw" type="button" aria-pressed="true">Draw</button>
+        <button id="mode-video" type="button" aria-pressed="false">Video</button>
+      </div>
+    </header>
+
+    <main id="stage" class="stage">
+      <div id="frame" class="frame">
+        <div id="video-layer" class="video-layer"><div id="player"></div></div>
+        <canvas id="ink" class="ink"></canvas>
+        <div id="empty" class="empty">
+          <p class="empty-title">Paste a YouTube link above to start.</p>
+          <p>Draw over the video with Apple Pencil, step through it frame by frame, and capture moments for your notes.</p>
+        </div>
+        <p id="hint" class="hint" hidden>Tap the video once to start it. Drawing turns on as soon as it plays.</p>
+      </div>
+    </main>
+
+    <footer class="dock">
+      <div class="row">
+        <div class="group" role="group" aria-label="Playback">
+          <button id="back-jump" type="button" title="Back 10 seconds (J)">−10s</button>
+          <button id="back-frame" type="button" title="Back one frame (,)">−1 frame</button>
+          <button id="play" type="button" class="primary" title="Play or pause (Space)">Play</button>
+          <button id="fwd-frame" type="button" title="Forward one frame (.)">+1 frame</button>
+          <button id="fwd-jump" type="button" title="Forward 10 seconds (L)">+10s</button>
+        </div>
+        <output id="clock" class="readout" aria-label="Time">0:00.00</output>
+        <div class="group" role="group" aria-label="Speed">
+          <button id="slower" type="button" title="Slower (&lt;)" aria-label="Slower">−</button>
+          <output id="rate" class="readout rate" aria-label="Speed">1×</output>
+          <button id="faster" type="button" title="Faster (&gt;)" aria-label="Faster">+</button>
+        </div>
+        <label class="field">
+          <select id="fps">
+            <option value="24">24</option>
+            <option value="30">30</option>
+            <option value="60">60</option>
+          </select>
+          <span>fps</span>
+        </label>
+        <div class="spacer"></div>
+        <div class="group" role="group" aria-label="Notes">
+          <button id="capture" type="button" class="primary" title="Capture this moment (C)">Capture</button>
+          <button id="copy-link" type="button" title="Copy a link to this moment">Copy link</button>
+          <button id="export" type="button" title="Export captures as a note and images">Export</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="seg" role="group" aria-label="Tool">
+          <button id="tool-pen" type="button" aria-pressed="true" title="Pen (P)">Pen</button>
+          <button id="tool-eraser" type="button" aria-pressed="false" title="Eraser (E)">Eraser</button>
+        </div>
+        <div id="swatches" class="swatches" role="group" aria-label="Ink color"></div>
+        <label class="field slider">
+          <span>Size</span>
+          <input id="size" type="range" min="1" max="16" step="0.5" />
+        </label>
+        <label class="field slider">
+          <span>Ink</span>
+          <input id="ink-opacity" type="range" min="0.1" max="1" step="0.05" />
+        </label>
+        <label class="field slider">
+          <span>Video</span>
+          <input id="video-opacity" type="range" min="0" max="1" step="0.05" />
+        </label>
+        <div class="seg" role="group" aria-label="Paper">
+          <button id="paper-dark" type="button" aria-pressed="true">Dark</button>
+          <button id="paper-light" type="button" aria-pressed="false">Light</button>
+        </div>
+        <label class="field check">
+          <input id="pencil-only" type="checkbox" />
+          <span>Pencil only</span>
+        </label>
+        <div class="spacer"></div>
+        <div class="group" role="group" aria-label="Edit">
+          <button id="undo" type="button" title="Undo (⌘Z)">Undo</button>
+          <button id="redo" type="button" title="Redo (⇧⌘Z)">Redo</button>
+          <button id="clear" type="button" title="Clear the drawing (undoable)">Clear</button>
+        </div>
+      </div>
+
+      <div id="captures" class="captures" aria-label="Captures"></div>
+    </footer>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

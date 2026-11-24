@@ -1,0 +1,11 @@
+{
+  "name": "tracepad",
+  "private": true,
+  "type": "module",
+  "description": "Draw over a YouTube video on iPad, frame by frame.",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "check": "node --check src/core/*.js src/shell/*.js",
+    "serve": "python3 -m http.server 8642"
+  }
+}
