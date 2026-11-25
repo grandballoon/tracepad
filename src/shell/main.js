@@ -14,11 +14,15 @@ import {
   noteMarkdown,
   serializeCaptures,
   deserializeCaptures,
+  setTranscript,
+  untranscribed,
 } from "../core/captures.js";
+import { looksLikeKey } from "../core/transcribe.js";
 import { createPlayer } from "./player.js";
 import { drawAll, drawStroke, sizeCanvas, renderPng } from "./canvas.js";
 import * as store from "./store.js";
 import { deliver } from "./export.js";
+import { transcribe } from "./claude.js";
 
 // Manim's palette, so traced figures keep the video's colors, plus a dark
 // ink for light paper.
@@ -42,6 +46,7 @@ const DEFAULT_SETTINGS = {
   paper: "dark",
   pencilOnly: matchMedia("(pointer: coarse)").matches,
   fps: 60,
+  transcribe: true,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -58,6 +63,9 @@ let frame = { x: 0, y: 0, width: 0, height: 0 };
 let ctx = $("ink").getContext("2d");
 let activePointer = null;
 let prepared = null; // files ready to share, rebuilt when captures change
+let claudeKey = ""; // the user's own Anthropic API key, kept only in this browser
+const transcribing = new Set(); // capture ids waiting on Claude
+const failed = new Map(); // capture id → why Claude couldn't transcribe it
 
 // ---------- playback ----------
 
@@ -110,6 +118,8 @@ async function loadVideo(parsed) {
   if (video?.id !== parsed.id) return; // another video was loaded meanwhile
   ink = Ink.emptyInk(savedInk ? Ink.deserialize(savedInk) : []);
   captures = savedCaptures ? deserializeCaptures(savedCaptures) : [];
+  transcribing.clear();
+  failed.clear();
   redraw();
   renderInkControls();
   renderCaptures();
@@ -190,9 +200,42 @@ function renderInkControls() {
 
 function capture() {
   if (!video) return;
-  captures = addCapture(captures, { time: tp.time, strokes: ink.strokes }, tp.fps);
+  const taken = { id: Date.now(), time: tp.time, strokes: ink.strokes };
+  captures = addCapture(captures, taken, tp.fps);
   saveCaptures();
   toast(`Captured ${clockLabel(tp.time)}`);
+  if (settings.transcribe && claudeKey) transcribeCapture(taken);
+}
+
+// ---------- transcription ----------
+
+async function transcribeCapture(c) {
+  if (!video || transcribing.has(c.id)) return;
+  const videoId = video.id;
+  transcribing.add(c.id);
+  failed.delete(c.id);
+  renderCaptures();
+  let result;
+  try {
+    const png = await renderPng(c.strokes, PAPER[settings.paper]);
+    result = await transcribe({ key: claudeKey, png, title: video.title, time: c.time });
+  } catch (error) {
+    result = { ok: false, message: error.message };
+  }
+  if (video?.id !== videoId) return; // another video was loaded meanwhile
+  transcribing.delete(c.id);
+  if (result.ok) {
+    captures = setTranscript(captures, c.id, result.markdown);
+    saveCaptures();
+  } else {
+    failed.set(c.id, result.message);
+    renderCaptures();
+    toast(result.message, "error");
+  }
+}
+
+function transcribeWaiting() {
+  for (const c of untranscribed(captures)) transcribeCapture(c);
 }
 
 function saveCaptures() {
@@ -207,8 +250,15 @@ function renderCaptures() {
     ...captures.map((c, i) => {
       const chip = document.createElement("span");
       chip.className = "chip";
+      const state = transcribing.has(c.id) ? "pending" : failed.has(c.id) ? "failed" : typeof c.transcript === "string" ? "done" : "";
+      if (state) chip.dataset.state = state;
       const jump = Object.assign(document.createElement("button"), { type: "button", textContent: clockLabel(c.time) });
-      jump.title = "Go to this moment";
+      jump.title = {
+        pending: "Go to this moment. Claude is transcribing it.",
+        failed: `Go to this moment. ${failed.get(c.id)}`,
+        done: "Go to this moment. Transcribed.",
+        "": "Go to this moment",
+      }[state];
       jump.addEventListener("click", () => {
         if (tp.playing) dispatch({ type: "togglePlay" });
         dispatch({ type: "jump", seconds: c.time - tp.time });
@@ -226,6 +276,7 @@ function renderCaptures() {
   const button = $("export");
   button.disabled = captures.length === 0;
   button.textContent = captures.length ? `Export ${captures.length}` : "Export";
+  renderClaude();
 }
 
 // Files are built ahead of the tap: iPad Safari only opens the share sheet
@@ -247,6 +298,7 @@ async function prepareExport() {
 }
 
 async function exportCaptures() {
+  if (transcribing.size) return toast(`Claude is still transcribing ${transcribing.size === 1 ? "a capture" : `${transcribing.size} captures`}. Export when it's done.`);
   if (!prepared) return toast("Getting the export ready. Tap Export again in a moment.");
   const result = await deliver(prepared);
   if (result === "downloaded") toast(`Downloaded ${prepared.length} files.`);
@@ -261,6 +313,39 @@ async function copyLink() {
   } catch {
     toast(url);
   }
+}
+
+// ---------- Claude settings ----------
+
+function renderClaude() {
+  $("claude").textContent = claudeKey ? "Claude ✓" : "Claude";
+  $("claude-key-state").textContent = claudeKey ? "A key is saved in this browser." : "No key saved yet.";
+  $("claude-forget").disabled = !claudeKey;
+  $("claude-transcribe").checked = settings.transcribe;
+  const waiting = untranscribed(captures).filter((c) => !transcribing.has(c.id)).length;
+  const run = $("claude-run");
+  run.disabled = !claudeKey || waiting === 0;
+  run.textContent = waiting ? `Transcribe ${waiting} waiting` : "Nothing waiting";
+}
+
+async function saveKey() {
+  const input = $("claude-key");
+  const value = input.value.trim();
+  if (!value) return;
+  if (!looksLikeKey(value)) {
+    $("claude-key-state").textContent = "That doesn't look like an Anthropic API key. They start with sk-ant-.";
+    return;
+  }
+  input.value = "";
+  claudeKey = value;
+  await store.set(store.keys.claudeKey, value);
+  renderClaude();
+}
+
+async function forgetKey() {
+  claudeKey = "";
+  await store.remove(store.keys.claudeKey);
+  renderClaude();
 }
 
 // ---------- layout and settings ----------
@@ -361,6 +446,21 @@ function bind() {
   on("capture", capture);
   on("copy-link", copyLink);
   on("export", exportCaptures);
+  on("claude", () => {
+    renderClaude();
+    $("claude-dialog").showModal();
+  });
+  on("claude-save", saveKey);
+  on("claude-forget", forgetKey);
+  on("claude-run", transcribeWaiting);
+  on("claude-done", () => $("claude-dialog").close());
+  $("claude-key").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveKey();
+    }
+  });
+  $("claude-transcribe").addEventListener("change", (e) => updateSettings({ transcribe: e.target.checked }));
 
   $("fps").addEventListener("change", (e) => updateSettings({ fps: Number(e.target.value) }));
   $("size").addEventListener("input", (e) => updateSettings({ size: Number(e.target.value) }));
@@ -387,6 +487,7 @@ function bind() {
 }
 
 function onKey(e) {
+  if ($("claude-dialog").open) return;
   if (e.target instanceof HTMLInputElement && e.target.type !== "range" && e.target.type !== "checkbox") return;
   const meta = e.metaKey || e.ctrlKey;
   if (meta && e.key.toLowerCase() === "z") {
@@ -417,6 +518,7 @@ function onKey(e) {
 async function main() {
   const saved = await store.get(store.keys.settings);
   settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+  claudeKey = (await store.get(store.keys.claudeKey)) ?? "";
   tp = initialTransport(settings.fps);
   buildSwatches();
   applySettings();

@@ -351,6 +351,100 @@ button.primary {
   color: var(--muted);
 }
 
+/* Transcription state on a capture chip: a dot after its time. */
+.chip[data-state] button:first-child::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.chip[data-state="done"] button:first-child::after {
+  background: var(--accent);
+}
+
+.chip[data-state="failed"] button:first-child::after {
+  background: var(--danger);
+}
+
+.chip[data-state="pending"] button:first-child::after {
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.25;
+  }
+}
+
+/* Claude sheet */
+.sheet {
+  width: min(520px, calc(100% - 32px));
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--panel);
+  color: var(--fg);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.sheet h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.sheet p {
+  margin: 0 0 12px;
+}
+
+.sheet .muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.stack {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+}
+
+.inline input {
+  flex: 1;
+  min-width: 0;
+  height: var(--control);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-family: var(--font-num);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+button.danger {
+  color: var(--danger);
+}
+
 /* Toast */
 .toast {
   position: fixed;
@@ -379,6 +473,10 @@ button.primary {
 @media (prefers-reduced-motion: reduce) {
   .toast {
     transition: none;
+  }
+
+  .chip[data-state="pending"] button:first-child::after {
+    animation: none;
   }
 }
 

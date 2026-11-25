@@ -24,7 +24,10 @@ import {
   noteMarkdown,
   serializeCaptures,
   deserializeCaptures,
+  setTranscript,
+  untranscribed,
 } from "../src/core/captures.js";
+import { transcribeRequest, readTranscript, looksLikeKey, MODEL, API_URL } from "../src/core/transcribe.js";
 
 const ID = "fNk_zzaMoSs";
 
@@ -245,8 +248,84 @@ test("export names and note", () => {
 });
 
 test("captures survive a save and bad saves read as empty", () => {
-  const captures = [{ time: 4, strokes: [{ ...brush, points: [[0, 0, 1]] }] }];
+  const captures = [
+    { id: 7, time: 4, strokes: [{ ...brush, points: [[0, 0, 1]] }], transcript: "$x^2$" },
+    { id: 8, time: 5, strokes: [] },
+  ];
   assert.deepEqual(deserializeCaptures(serializeCaptures(captures)), captures);
+  // Saves from before captures had ids get one each.
+  assert.deepEqual(deserializeCaptures(JSON.stringify({ version: 1, captures: [{ time: 4, strokes: [] }] })), [
+    { id: 0, time: 4, strokes: [] },
+  ]);
   assert.deepEqual(deserializeCaptures("{"), []);
   assert.deepEqual(deserializeCaptures(JSON.stringify({ version: 1, captures: [{ time: "x" }] })), []);
+});
+
+test("a transcript lands only on the capture it was made from", () => {
+  const list = [{ id: 1, time: 1, strokes: [] }, { id: 2, time: 2, strokes: [] }];
+  const done = setTranscript(list, 2, "Shear");
+  assert.deepEqual(done.map((c) => c.transcript), [undefined, "Shear"]);
+  assert.deepEqual(setTranscript(list, 99, "Lost"), list); // replaced or removed meanwhile
+  assert.deepEqual(untranscribed(done).map((c) => c.id), [1]);
+  assert.deepEqual(untranscribed(setTranscript(done, 1, "")), []); // nothing to write still counts as done
+});
+
+test("the note puts each transcript under its timestamp, above the image", () => {
+  const meta = { date: new Date(2026, 10, 24), title: "Shears", videoId: ID };
+  const captures = [{ id: 1, time: 3, strokes: [], transcript: "  $\\hat{\\imath}$ stays put\n" }, { id: 2, time: 4, strokes: [], transcript: "" }];
+  const body = noteMarkdown(meta, captures, ["a.png", "b.png"]).split("---\n").pop();
+  assert.equal(
+    body,
+    [
+      "",
+      "# Shears",
+      "",
+      `## [0:03](https://youtu.be/${ID}?t=3)`,
+      "",
+      "$\\hat{\\imath}$ stays put",
+      "",
+      "![[a.png]]",
+      "",
+      `## [0:04](https://youtu.be/${ID}?t=4)`,
+      "",
+      "![[b.png]]",
+      "",
+    ].join("\n"),
+  );
+});
+
+test("the transcription request sends the image to Claude from the browser", () => {
+  const { url, init } = transcribeRequest({ key: "sk-ant-test", image: "AAAA", title: "Shears", time: 65 });
+  assert.equal(url, API_URL);
+  assert.equal(init.method, "POST");
+  assert.equal(init.headers["x-api-key"], "sk-ant-test");
+  assert.equal(init.headers["anthropic-dangerous-direct-browser-access"], "true");
+  const body = JSON.parse(init.body);
+  assert.equal(body.model, MODEL);
+  assert.equal(body.fallbacks, "default");
+  assert.equal(body.temperature, undefined);
+  const [image, text] = body.messages[0].content;
+  assert.deepEqual(image, { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } });
+  assert.equal(text.text, 'From "Shears" at 1:05. Transcribe this page.');
+});
+
+test("reading Claude's reply", () => {
+  const reply = (content, extra = {}) => ({ content, stop_reason: "end_turn", ...extra });
+  assert.deepEqual(
+    readTranscript(200, reply([{ type: "thinking", thinking: "" }, { type: "text", text: "  Basis vectors\n" }])),
+    { ok: true, markdown: "Basis vectors" },
+  );
+  assert.deepEqual(readTranscript(200, reply([{ type: "text", text: "```markdown\n$a$\n```" }])), { ok: true, markdown: "$a$" });
+  assert.deepEqual(readTranscript(200, reply([])), { ok: true, markdown: "" });
+  assert.equal(readTranscript(200, reply([], { stop_reason: "refusal" })).ok, false);
+  assert.match(readTranscript(401, {}).message, /API key/);
+  assert.match(readTranscript(429, {}).message, /rate limit/);
+  assert.match(readTranscript(529, {}).message, /overloaded/);
+  assert.match(readTranscript(400, { error: { message: "image too large" } }).message, /image too large/);
+});
+
+test("only keys shaped like Anthropic keys are kept", () => {
+  assert.equal(looksLikeKey(" sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123 "), true);
+  assert.equal(looksLikeKey("sk-proj-abcdefghijklmnopqrstuvwxyz"), false);
+  assert.equal(looksLikeKey(""), false);
 });

@@ -36,10 +36,12 @@ async function run(mode, action) {
 
 export const get = (key) => run("readonly", (s) => s.get(key));
 export const set = (key, value) => run("readwrite", (s) => s.put(value, key));
+export const remove = (key) => run("readwrite", (s) => s.delete(key));
 
 export const keys = {
   settings: "settings",
   last: "last-video",
+  claudeKey: "claude-key",
   ink: (id) => `ink:${id}`,
   captures: (id) => `captures:${id}`,
 };

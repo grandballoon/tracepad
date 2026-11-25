@@ -6,7 +6,12 @@ import { frameAt } from "./transport.js";
 import { isStroke } from "./ink.js";
 
 /** @typedef {import("./ink.js").Stroke} Stroke */
-/** @typedef {{ time: number, strokes: Stroke[] }} Capture */
+/**
+ * id is the moment it was taken, so a transcript that arrives late lands on
+ * the capture it was made from and never on one that replaced it.
+ * transcript is Claude's Markdown for the ink, once it has come back.
+ * @typedef {{ id: number, time: number, strokes: Stroke[], transcript?: string }} Capture
+ */
 
 /** Add a capture, replacing one already taken at the same frame. Kept in time order. */
 export function addCapture(captures, capture, fps) {
@@ -17,6 +22,16 @@ export function addCapture(captures, capture, fps) {
 
 export function removeCapture(captures, index) {
   return captures.filter((_, i) => i !== index);
+}
+
+/** Attach a transcript to the capture it was made from, if that capture is still there. */
+export function setTranscript(captures, id, transcript) {
+  return captures.map((c) => (c.id === id ? { ...c, transcript } : c));
+}
+
+/** Captures that still need a transcript. */
+export function untranscribed(captures) {
+  return captures.filter((c) => typeof c.transcript !== "string");
 }
 
 /** A link that opens the video at this moment (YouTube accepts whole seconds). */
@@ -81,6 +96,7 @@ export function noteMarkdown({ date, title, videoId }, captures, imageNames) {
   ];
   captures.forEach((capture, i) => {
     lines.push(`## [${clockLabel(capture.time)}](${timestampUrl(videoId, capture.time)})`, "");
+    if (capture.transcript?.trim()) lines.push(capture.transcript.trim(), "");
     lines.push(`![[${imageNames[i]}]]`, "");
   });
   return lines.join("\n");
@@ -99,7 +115,12 @@ export function deserializeCaptures(text) {
     if (data?.version !== FORMAT_VERSION || !Array.isArray(data.captures)) return [];
     return data.captures
       .filter((c) => c && Number.isFinite(c.time) && Array.isArray(c.strokes))
-      .map((c) => ({ time: c.time, strokes: c.strokes.filter(isStroke) }));
+      .map((c, i) => ({
+        id: Number.isFinite(c.id) ? c.id : i,
+        time: c.time,
+        strokes: c.strokes.filter(isStroke),
+        ...(typeof c.transcript === "string" ? { transcript: c.transcript } : {}),
+      }));
   } catch {
     return [];
   }

@@ -69,6 +69,7 @@
           <button id="capture" type="button" class="primary" title="Capture this moment (C)">Capture</button>
           <button id="copy-link" type="button" title="Copy a link to this moment">Copy link</button>
           <button id="export" type="button" title="Export captures as a note and images">Export</button>
+          <button id="claude" type="button" title="Transcribe captures with Claude">Claude</button>
         </div>
       </div>
 
@@ -108,6 +109,37 @@
 
       <div id="captures" class="captures" aria-label="Captures"></div>
     </footer>
+
+    <dialog id="claude-dialog" class="sheet" aria-labelledby="claude-title">
+      <h2 id="claude-title">Transcribe with Claude</h2>
+      <p>
+        Claude reads each capture's drawing and writes it out as Markdown, with math in LaTeX.
+        The text goes under the capture's timestamp in the exported note, above its image.
+        It uses your own Anthropic API key and costs about a cent or two per capture.
+      </p>
+      <label class="stack" for="claude-key">
+        <span>API key</span>
+        <span class="inline">
+          <input id="claude-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" />
+          <button id="claude-save" type="button">Save</button>
+        </span>
+      </label>
+      <p id="claude-key-state" class="muted"></p>
+      <p class="muted">
+        The key stays in this browser and is sent only to Anthropic.
+        Every page on this github.io address shares the browser's storage, so use a key you can revoke, with a spending limit set in the Anthropic Console.
+      </p>
+      <label class="field check">
+        <input id="claude-transcribe" type="checkbox" />
+        <span>Transcribe each capture as it's taken</span>
+      </label>
+      <div class="actions">
+        <button id="claude-forget" type="button" class="danger">Forget key</button>
+        <div class="spacer"></div>
+        <button id="claude-run" type="button">Transcribe waiting</button>
+        <button id="claude-done" type="button" class="primary">Done</button>
+      </div>
+    </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
